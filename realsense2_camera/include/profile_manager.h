@@ -71,6 +71,7 @@ namespace realsense2_camera
             int getHeight(rs2_stream stream_type) {return _height[stream_type];};
             int getWidth(rs2_stream stream_type) {return _width[stream_type];};
             int getFPS(rs2_stream stream_type) {return _fps[stream_type];};
+            int getSkipFrames(rs2_stream stream_type) {return _skip_frames[stream_type];};
 
         private:
             bool isSameProfileValues(const rs2::stream_profile& profile, const int width, const int height, const int fps, const rs2_format format);
@@ -83,7 +84,7 @@ namespace realsense2_camera
         private:
             std::string _module_name;
             std::map<stream_index_pair, rs2_format>  _formats;
-            std::map<rs2_stream, int> _fps, _width, _height;
+            std::map<rs2_stream, int> _fps, _width, _height, _skip_frames;
             bool _force_image_default_qos;
     };
 

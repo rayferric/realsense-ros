@@ -342,6 +342,21 @@ rmw_qos_profile_t RosSensor::getInfoQOS(const stream_index_pair& sip) const
     throw std::runtime_error("Given stream has no profile manager: " + std::string(rs2_stream_to_string(sip.first)) + "." + std::to_string(sip.second));
 }
 
+int RosSensor::getSkipFrames(const stream_index_pair& sip) const {
+    for(auto& profile_manager : _profile_managers)
+    {
+        if (profile_manager->isTypeExist())
+        {
+            std::shared_ptr<VideoProfilesManager> video_profiles_manager = std::dynamic_pointer_cast<VideoProfilesManager>(profile_manager);
+            if (video_profiles_manager && video_profiles_manager->hasSIP(sip))
+            {
+                return video_profiles_manager->getSkipFrames(sip.first);
+            }
+        }
+    }
+    return -1;
+}
+
 bool profiles_equal(const rs2::stream_profile& a, const rs2::stream_profile& b)
 {
     if (a.is<rs2::video_stream_profile>() && b.is<rs2::video_stream_profile>())
