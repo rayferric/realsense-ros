@@ -556,6 +556,12 @@ void BaseRealSenseNode::imu_callback(rs2::frame frame)
     publishMetadata(frame, t, OPTICAL_FRAME_ID(stream_index));
 }
 
+// Check whether skip_frames was set for the frame's stream, and if so, apply it.
+// Return true if the frame should be dropped, false if it should be kept.
+// skip_frames = 0 - publish every frame
+// skip_frames = 1 - publish every other frame
+// skip_frames = 2 - publish every third frame
+// ... and so on
 bool BaseRealSenseNode::should_skip_frame(rs2::frame frame)
 {
     rs2_sensor *sensor = frame.get_sensor();
@@ -592,7 +598,12 @@ bool BaseRealSenseNode::should_skip_frame(rs2::frame frame)
 
 void BaseRealSenseNode::frame_callback(rs2::frame frame)
 {
-    // Skip frames
+    // Skip frames if the user configured their source module to do so.
+    //
+    // Normally this can be done using the "profile" parameter of color/depth modules.
+    // But since profile framerate is tied to the shutter speed of the color sensor,
+    // we may want to keep the profile FPS high to reduce motion blur.
+    // In this case, skipping frames in the driver can be used to reduce the workload.
     if (should_skip_frame(frame))
     {
         return;
