@@ -252,6 +252,7 @@ namespace realsense2_camera
         void imu_callback(rs2::frame frame);
         void imu_callback_sync(rs2::frame frame, imu_sync_method sync_method=imu_sync_method::COPY);
         void multiple_message_callback(rs2::frame frame, imu_sync_method sync_method);
+        bool should_skip_frame(rs2::frame frame);
         void frame_callback(rs2::frame frame);
         
         void startDiagnosticsUpdater();
@@ -343,6 +344,7 @@ namespace realsense2_camera
         std::map<stream_index_pair, std::shared_ptr<image_publisher>> _depth_aligned_image_publishers;
         std::map<std::string, rs2::region_of_interest> _auto_exposure_roi;
         std::map<rs2_stream, bool> _is_first_frame;
+        std::map<stream_index_pair, int> frame_counts;
 
         std::shared_ptr<std::thread> _monitoring_t;
         std::shared_ptr<std::thread> _monitoring_pc;   //pc = profile changes

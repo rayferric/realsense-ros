@@ -515,9 +515,48 @@ void BaseRealSenseNode::imu_callback(rs2::frame frame)
     publishMetadata(frame, t, OPTICAL_FRAME_ID(stream_index));
 }
 
+bool BaseRealSenseNode::should_skip_frame(rs2::frame frame)
+{
+    rs2_sensor *sensor = frame.get_sensor();
+    auto ros_sensor_it = _available_ros_sensors.begin();
+    while (ros_sensor_it != _available_ros_sensors.end()) {
+        if ((*ros_sensor_it)->get().get() == sensor) {
+            break;
+        } else {
+            ++ros_sensor_it;
+        }
+    }
+
+    if (ros_sensor_it != _available_ros_sensors.end())
+    {
+        RosSensor* ros_sensor = (*ros_sensor_it).get();
+
+        stream_profile profile = frame.get_profile();
+        stream_index_pair sip(profile.stream_type(), profile.stream_index());
+        int skipFrames = ros_sensor->getSkipFrames(sip);
+
+        if (skipFrames > 0)
+        {
+            int& frame_count = frame_counts[sip];
+            frame_count++;
+            if (frame_count % (skipFrames + 1) != 0)
+            {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
 
 void BaseRealSenseNode::frame_callback(rs2::frame frame)
 {
+    // Skip frames
+    if (should_skip_frame(frame))
+    {
+        return;
+    }
+
     if (_synced_imu_publisher)
         _synced_imu_publisher->Pause();
     double frame_time = frame.get_timestamp();

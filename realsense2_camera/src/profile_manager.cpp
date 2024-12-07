@@ -540,6 +540,32 @@ void VideoProfilesManager::registerVideoSensorParams(std::set<stream_index_pair>
                 }, crnt_descriptor);
         _parameters_names.push_back(param_name);
     }
+
+    // Add skip_frames parameter for RGB camera
+    for (auto sip : sips)
+    {
+        std::string param_name = _module_name + "." + STREAM_NAME(sip) + "_skip_frames";
+        int default_skip_frames = 0; // Full frame rate by default
+        _skip_frames[sip.first] = default_skip_frames; // Initialize skip_frames
+
+        rcl_interfaces::msg::ParameterDescriptor crnt_descriptor;
+        crnt_descriptor.description = "Number of frames to skip between processed frames. 0 means no frames are skipped. 1 is FPS/2, 2 is FPS/3, etc.";
+
+        _params.getParameters()->setParam<int>(param_name, default_skip_frames, [this, sip](const rclcpp::Parameter &parameter)
+        {
+            int skip_frames = parameter.get_value<int>();
+            if (skip_frames < 0)
+            {
+                RCLCPP_ERROR(_logger, "Invalid skip_frames value: %d. It must be a non-negative integer.", skip_frames);
+            }
+            else
+            {
+                _skip_frames[sip.first] = skip_frames;
+                RCLCPP_WARN(_logger, "skip_frames set to %d. Re-enable the stream for the change to take effect.", skip_frames);
+            }
+        }, crnt_descriptor);
+        _parameters_names.push_back(param_name);
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////
