@@ -523,10 +523,11 @@ void BaseRealSenseNode::imu_callback(rs2::frame frame)
 // ... and so on
 bool BaseRealSenseNode::should_skip_frame(rs2::frame frame)
 {
-    rs2_sensor *sensor = frame.get_sensor();
+    rs2::stream_profile profile = frame.get_profile();
     auto ros_sensor_it = _available_ros_sensors.begin();
     while (ros_sensor_it != _available_ros_sensors.end()) {
-        if ((*ros_sensor_it)->get().get() == sensor) {
+        std::vector<rs2::stream_profile> profiles = (*ros_sensor_it)->get_stream_profiles();
+        if (std::find(profiles.begin(), profiles.end(), profile) != profiles.end()) {
             break;
         } else {
             ++ros_sensor_it;
