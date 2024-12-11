@@ -252,7 +252,7 @@ namespace realsense2_camera
         void imu_callback(rs2::frame frame);
         void imu_callback_sync(rs2::frame frame, imu_sync_method sync_method=imu_sync_method::COPY);
         void multiple_message_callback(rs2::frame frame, imu_sync_method sync_method);
-        bool should_skip_frame(rs2::frame frame);
+        bool should_skip_frame(bool depth_frame);
         void frame_callback(rs2::frame frame);
         
         void startDiagnosticsUpdater();

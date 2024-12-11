@@ -515,59 +515,78 @@ void BaseRealSenseNode::imu_callback(rs2::frame frame)
     publishMetadata(frame, t, OPTICAL_FRAME_ID(stream_index));
 }
 
-// Check whether skip_frames was set for the frame's stream, and if so, apply it.
+// Skip frames if the user configured their source module to do so.
+//
+// Normally this can be done using the "profile" parameter of color/depth modules.
+// But since profile framerate is tied to the shutter speed of the color sensor,
+// we may want to keep the profile FPS high to reduce motion blur.
+// In this case, skipping frames in the driver can be used to reduce the workload.
 // Return true if the frame should be dropped, false if it should be kept.
+// Configure {module}.{stream}_skip_frames:
 // skip_frames = 0 - publish every frame
 // skip_frames = 1 - publish every other frame
 // skip_frames = 2 - publish every third frame
 // ... and so on
-bool BaseRealSenseNode::should_skip_frame(rs2::frame frame)
+bool BaseRealSenseNode::should_skip_frame(bool depth_frame)
 {
-    rs2::stream_profile profile = frame.get_profile();
-    auto ros_sensor_it = _available_ros_sensors.begin();
-    while (ros_sensor_it != _available_ros_sensors.end()) {
-        std::vector<rs2::stream_profile> profiles = (*ros_sensor_it)->get_stream_profiles();
-        if (std::find(profiles.begin(), profiles.end(), profile) != profiles.end()) {
-            break;
-        } else {
-            ++ros_sensor_it;
+    // ROS_INFO("should_skip_frame(%s)", depth_frame ? "true" : "false");
+
+    // // DEBUG: Print _available_ros_sensors and their stream_profiles
+    // for (auto& sensor : _available_ros_sensors)
+    // {
+    //     ROS_INFO_STREAM("Sensor: " << &sensor);
+    //     for (auto& profile : sensor->get_stream_profiles())
+    //     {
+    //         ROS_INFO_STREAM("  Profile: " << profile.stream_name() << " " << profile.stream_index());
+    //     }
+    // }
+
+
+    // rs2::stream_profile profile = frame->get_profile();
+    // auto ros_sensor_it = _available_ros_sensors.begin();
+    // while (ros_sensor_it != _available_ros_sensors.end()) {
+    //     std::vector<rs2::stream_profile> profiles = (*ros_sensor_it)->get_stream_profiles();
+    //     if (std::find(profiles.begin(), profiles.end(), profile) != profiles.end()) {
+    //         break;
+    //     } else {
+    //         ++ros_sensor_it;
+    //     }
+    // }
+
+    // if (ros_sensor_it != _available_ros_sensors.end())
+    // {
+    //     RosSensor* ros_sensor = (*ros_sensor_it).get();
+
+    //     stream_profile profile = frame->get_profile();
+    //     stream_index_pair sip(profile.stream_type(), profile.stream_index());
+    //     int skipFrames = ros_sensor->getSkipFrames(sip);
+
+    //     if (skipFrames > 0)
+    //     {
+    //         int& frame_count = frame_counts[sip];
+    //         frame_count++;
+    //         if (frame_count % (skipFrames + 1) != 0)
+    //         {
+    //             return true;
+    //         }
+    //     }
+    // }
+
+    if(!depth_frame) {
+        static int count = 0;
+        count++;
+        if (count % 5 != 0) {
+            // ROS_INFO("Skipping frame");
+            return true;
         }
     }
-
-    if (ros_sensor_it != _available_ros_sensors.end())
-    {
-        RosSensor* ros_sensor = (*ros_sensor_it).get();
-
-        stream_profile profile = frame.get_profile();
-        stream_index_pair sip(profile.stream_type(), profile.stream_index());
-        int skipFrames = ros_sensor->getSkipFrames(sip);
-
-        if (skipFrames > 0)
-        {
-            int& frame_count = frame_counts[sip];
-            frame_count++;
-            if (frame_count % (skipFrames + 1) != 0)
-            {
-                return true;
-            }
-        }
-    }
-
+    // ROS_INFO("Keeping frame");
     return false;
 }
 
 void BaseRealSenseNode::frame_callback(rs2::frame frame)
 {
-    // Skip frames if the user configured their source module to do so.
-    //
-    // Normally this can be done using the "profile" parameter of color/depth modules.
-    // But since profile framerate is tied to the shutter speed of the color sensor,
-    // we may want to keep the profile FPS high to reduce motion blur.
-    // In this case, skipping frames in the driver can be used to reduce the workload.
-    if (should_skip_frame(frame))
-    {
-        return;
-    }
+    // ROS_INFO("frame_callback");
 
     if (_synced_imu_publisher)
         _synced_imu_publisher->Pause();
@@ -608,6 +627,15 @@ void BaseRealSenseNode::frame_callback(rs2::frame frame)
 
         rs2::video_frame original_color_frame = frameset.get_color_frame();
 
+        if (original_color_frame && should_skip_frame(false))
+        {
+            original_color_frame = rs2::frame();
+        }
+        if (original_depth_frame && should_skip_frame(true))
+        {
+            original_depth_frame = rs2::frame();
+        }
+
         ROS_DEBUG("num_filters: %d", static_cast<int>(_filters.size()));
         for (auto filter_it : _filters)
         {
@@ -628,6 +656,16 @@ void BaseRealSenseNode::frame_callback(rs2::frame frame)
                 rs2_stream_to_string(stream_type), stream_index, rs2_format_to_string(stream_format), f.get_frame_number(), frame_time, t.nanoseconds());
             if (f.is<rs2::video_frame>())
                 ROS_DEBUG_STREAM("frame: " << f.as<rs2::video_frame>().get_width() << " x " << f.as<rs2::video_frame>().get_height());
+
+            // Skip frames
+            if (sip.first == RS2_STREAM_DEPTH && !f.is<rs2::points>() && !original_depth_frame)
+            {
+                continue;
+            }
+            else if (sip.first == RS2_STREAM_COLOR && !original_color_frame)
+            {
+                continue;
+            }
 
             if (f.is<rs2::points>())
             {
@@ -673,16 +711,19 @@ void BaseRealSenseNode::frame_callback(rs2::frame frame)
         auto stream_index = frame.get_profile().stream_index();
         ROS_DEBUG("Single video frame arrived (%s, %d). frame_number: %llu ; frame_TS: %f ; ros_TS(NSec): %lu",
                     rs2_stream_to_string(stream_type), stream_index, frame.get_frame_number(), frame_time, t.nanoseconds());
-            
-        stream_index_pair sip{stream_type,stream_index};
-        if (frame.is<rs2::depth_frame>())
+        
+        if (!should_skip_frame(frame.is<rs2::depth_frame>()))
         {
-            if (_clipping_distance > 0)
+            stream_index_pair sip{stream_type,stream_index};
+            if (frame.is<rs2::depth_frame>())
             {
-                clip_depth(frame, _clipping_distance);
+                if (_clipping_distance > 0)
+                {
+                    clip_depth(frame, _clipping_distance);
+                }
             }
+            publishFrame(frame, t, sip, _images, _info_publishers, _image_publishers);
         }
-        publishFrame(frame, t, sip, _images, _info_publishers, _image_publishers);
      }
      if (_synced_imu_publisher)
         _synced_imu_publisher->Resume();
